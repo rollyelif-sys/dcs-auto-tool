@@ -10,7 +10,7 @@ import re
 
 # ================= 核心配置区 =================
 # 小米大模型的兼容接口地址
-BASE_URL = "https://platform.xiaomimimo.com/v1" 
+BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1" 
 # 调用小米全模态（包含视觉识图）模型
 MODEL_NAME = "mimo-v2-omni" 
 # ==============================================
