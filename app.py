@@ -72,9 +72,17 @@ with col1:
         if template_name not in st.session_state.records:
             try:
                 df_temp = pd.read_excel(excel_file, engine="openpyxl")
-            except Exception:
-                excel_file.seek(0)
-                df_temp = pd.read_excel(excel_file, engine="xlrd")
+            except Exception as e1:
+                try:
+                    excel_file.seek(0)
+                    df_temp = pd.read_excel(excel_file, engine="xlrd")
+                except Exception as e2:
+                    try:
+                        excel_file.seek(0)
+                        df_temp = pd.read_excel(excel_file)
+                    except Exception as e3:
+                        st.error(f"Excel读取失败，请确认文件格式正确（需为.xlsx或.xls）。错误：{{e3}}")
+                        st.stop()
             st.session_state.records[template_name] = df_temp
             st.session_state.template_lens[template_name] = len(df_temp)
         st.success(f"📌 当前正在处理模板：**{template_name}**")
