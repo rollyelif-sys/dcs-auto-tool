@@ -47,10 +47,17 @@ st.markdown("💡 **操作流**：左侧填 Key 和班次 -> 上传空模板 -> 
 col1, col2 = st.columns([1, 1])
 
 # 图像转 Base64 编码函数（大模型视觉 API 标准输入格式）
-def encode_image_to_base64(img):
+def encode_image_to_base64(img, max_size=1024, quality=80):
+    """压缩图片后转 Base64，防止 413 Request Entity Too Large 错误"""
+    img = img.convert('RGB')
+    # 等比缩放，最长边不超过 max_size
+    w, h = img.size
+    if max(w, h) > max_size:
+        ratio = max_size / max(w, h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+    # 压缩为 JPEG
     buffered = io.BytesIO()
-    img = img.convert('RGB') 
-    img.save(buffered, format="JPEG")
+    img.save(buffered, format="JPEG", quality=quality, optimize=True)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
 with col1:
