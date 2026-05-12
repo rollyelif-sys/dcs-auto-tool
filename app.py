@@ -70,7 +70,11 @@ with col1:
         template_name = excel_file.name
         # 如果是该模板第一次上传，读取其结构并初始化到暂存池
         if template_name not in st.session_state.records:
-            df_temp = pd.read_excel(excel_file)
+            try:
+                df_temp = pd.read_excel(excel_file, engine="openpyxl")
+            except Exception:
+                excel_file.seek(0)
+                df_temp = pd.read_excel(excel_file, engine="xlrd")
             st.session_state.records[template_name] = df_temp
             st.session_state.template_lens[template_name] = len(df_temp)
         st.success(f"📌 当前正在处理模板：**{template_name}**")
