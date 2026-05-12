@@ -15,7 +15,6 @@ MODEL_NAME = "mimo-v2-omni"
 
 st.set_page_config(page_title="DCS自动巡检台", page_icon="🏭", layout="wide")
 
-# ================= 安全与全局设置区 =================
 with st.sidebar:
     st.header("🔑 系统与班次设置")
     api_key_input = st.text_input("请输入小米 MiMo API Key", type="password", help="在此输入你的最新 Key，刷新网页会清空，确保安全。")
@@ -23,7 +22,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("⚠️ **提示**：为防止泄露，请使用最新的 API Key。每次重新打开网页时需要输入一次。")
 
-# ================= 初始化暂存池 =================
 if "records" not in st.session_state:
     st.session_state.records = {}
 if "template_lens" not in st.session_state:
@@ -36,9 +34,7 @@ st.markdown("💡 **操作流**：左侧填 Key 和班次 -> 上传空模板 -> 
 
 col1, col2 = st.columns([1, 1])
 
-# 图像转 Base64 编码函数（压缩防413）
 def encode_image_to_base64(img, max_size=1024, quality=80):
-    """压缩图片后转 Base64，防止 413 Request Entity Too Large 错误"""
     img = img.convert('RGB')
     w, h = img.size
     if max(w, h) > max_size:
@@ -48,9 +44,7 @@ def encode_image_to_base64(img, max_size=1024, quality=80):
     img.save(buffered, format="JPEG", quality=quality, optimize=True)
     return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
-# 读取Excel模板（支持合并表头）
 def read_excel_template(file):
-    """读取Excel模板，自动处理合并表头（第1行大类+第2行子列）"""
     for engine in ["openpyxl", "xlrd"]:
         try:
             file.seek(0)
@@ -63,7 +57,6 @@ def read_excel_template(file):
             return df
         except Exception:
             continue
-    # 最后尝试无合并表头
     file.seek(0)
     df = pd.read_excel(file)
     df = df.dropna(how='all').reset_index(drop=True)
@@ -86,7 +79,6 @@ with col1:
                 st.stop()
         st.success(f"📌 当前正在处理模板：**{template_name}**")
 
-# 当模板和截图都就绪时，展示提取操作区
 if excel_file and image_file:
     template_name = excel_file.name
     target_columns = st.session_state.records[template_name].columns.tolist()
@@ -110,104 +102,70 @@ if excel_file and image_file:
                         try:
                             client = OpenAI(api_key=api_key_input, base_url=BASE_URL, timeout=120.0)
                             base64_image = encode_image_to_base64(image)
-
                             formatted_columns = "\n".join(f"- {c}" for c in target_columns)
 
-                            prompt = f"""
-你是一个资深的化工DCS巡检员。请从SUPCON双管反应釜中控截图中精确提取数据。
+                            prompt = f"""你是化工DCS巡检员，从SUPCON双管反应釜截图中提取数据。
+
+【DCS界面布局】
+屏幕左侧下方有两个数据面板：
+- "主釜数据"面板：pH值1(约15,异常通道)、pH值2(较小,实际使用)、温度1、温度2、液位、功率、转速
+- "次釜数据"面板：温度、液位、功率、转速
+
+屏幕中部是管路流程图：
+- a管(左侧主釜)管路：金属液a、液碱a、氨水a，每个流量计的数值框第一行是PV实际值(L/h)
+- b管(右侧次釜)管路：金属液b、液碱b、氨水b，读法同上
+- 氮气管路：氮气a、氮气b，PV值(NL/m)
+- 空气管路：空气a、空气b，PV值(NL/m)
+- 自循环管路：主釜自循环、次釜自循环、主次釜循环
+
+罐体上显示：主釜压力(kPa)、次釜压力(kPa)
 
 【关键规则】
-1. 每个流量计的数值框里有多行数字，你必须读取第一行（PV实际值），不是第二行（SP设定值），不是第三行（频率），不是底部的累计数！
-2. PV值通常是较大的数字，带单位L/h或NL/m
-3. 累计数通常较小或带m³单位，在数值框底部，不要读！
-4. 数据面板在屏幕左侧下方，分"主釜数据"和"次釜数据"两个面板
+1. 只读PV实际值（数值框第一行大数字），不读SP设定值（第二行），不读频率（第三行），不读累计数（底部小字m³）
+2. pH有两个通道，取较小值（忽略15左右的）
+3. 氨水可能单管或双管进料，看实际哪个管有流量
 
-【第一步：逐个读取PV值】
+【读取以下PV值】
+a管: 金属液a=___, 液碱a=___, 氨水a=___
+b管: 金属液b=___, 液碱b=___, 氨水b=___
+氮气: 氮气a=___, 氮气b=___
+空气: 空气a=___, 空气b=___
+主釜面板: pH=___(取小值), 主釜温度=___, 主釜液位=___, 主釜转速=___
+次釜面板: 次釜温度=___, 次釜液位=___, 次釜转速=___
+罐体: 主釜压力=___, 次釜压力=___
+循环: 主釜自循环=___, 次釜自循环=___, 主次釜循环=___
 
-=== a管流量（左侧管路，从上往下）===
-在屏幕左侧找到标有"金属液""液碱""氨水"的管路，每根管路上有一个数值框：
-- 金属液a = 数值框第一行PV值 ___ L/h
-- 液碱a = 数值框第一行PV值 ___ L/h（不是底部的累计数！）
-- 氨水a = 数值框第一行PV值 ___ L/h（可能是0）
+【填入模板】
+模板列名: {formatted_columns}
 
-=== b管流量（中间/右侧管路，从上往下）===
-- 金属液b = 数值框第一行PV值 ___ L/h
-- 液碱b = 数值框第一行PV值 ___ L/h
-- 氨水b = 数值框第一行PV值 ___ L/h
+同义词: 模板"碱液"=DCS"液碱", 模板"搅拌"=DCS"转速"
 
-=== 氮气流量（找到标"氮气"的管路）===
-- 氮气a = 数值框第一行PV值 ___ NL/m
-- 氮气b = 数值框第一行PV值 ___ NL/m
+匹配规则:
+- 含"金属液"且含"A"->金属液a | 含"金属液"且含"B"->金属液b
+- 含"碱液"且含"A"->液碱a | 含"碱液"且含"B"->液碱b
+- 含"氨"且含"主"->氨水a | 含"氨"且含"次"->氨水b | 含"氨"且无主次->看实际进料
+- 含"氮"且含"主"->氮气a | 含"氮"且含"次"->氮气b
+- 含"空气"且含"主"->空气a | 含"空气"且含"次"->空气b
+- 含"温度"且含"主"->主釜温度 | 含"温度"且含"次"->次釜温度
+- 含"搅拌"且含"主"->主釜转速 | 含"搅拌"且含"次"->次釜转速
+- 含"液位"->次釜液位
+- 含"自循环"且含"主"->主釜自循环 | 含"自循环"且含"次"->次釜自循环
+- 含"主次釜循环"->主次釜循环
+- 含"pH"->pH值
+- 含"日期"/"时间"/"反应时间"->""
 
-=== 空气流量（找到标"空气"的管路）===
-- 空气a = 数值框第一行PV值 ___ NL/m
-- 空气b = 数值框第一行PV值 ___ NL/m
-
-=== 主釜数据面板（屏幕左侧下方，标"主釜数据"的区域）===
-- pH = ___（有两个通道，取较小值，忽略15左右的）
-- 主釜温度 = ___ ℃
-- 主釜液位 = ___ m
-- 主釜转速 = ___ rpm
-
-=== 次釜数据面板（屏幕左侧下方，标"次釜数据"的区域）===
-- 次釜温度 = ___ ℃
-- 次釜液位 = ___ m
-- 次釜转速 = ___ rpm
-
-=== 罐体参数 ===
-- 主釜压力 = ___ kPa（主釜罐体上）
-- 次釜压力 = ___ kPa（次釜罐体上）
-
-=== 自循环/循环流量 ===
-- 主釜自循环流量 = ___ L/h
-- 次釜自循环流量 = ___ L/h
-- 主次釜循环流量 = ___ L/h
-
-【第二步：填入Excel模板】
-
-模板列名（按顺序）：
-{formatted_columns}
-
-同义词：模板"碱液"=DCS"液碱"，模板"搅拌"=DCS"转速"
-
-逐列匹配：
-- 含"金属液"且含"A" → 金属液a
-- 含"金属液"且含"B" → 金属液b
-- 含"碱液"且含"A" → 液碱a
-- 含"碱液"且含"B" → 液碱b
-- 含"氨"且含"主" → 氨水a
-- 含"氨"且含"次" → 氨水b
-- 含"氨"且无主次 → 看DCS实际进料情况
-- 含"氮"且含"主" → 氮气a
-- 含"氮"且含"次" → 氮气b
-- 含"空气"且含"主" → 空气a
-- 含"空气"且含"次" → 空气b
-- 含"温度"且含"主" → 主釜温度
-- 含"温度"且含"次" → 次釜温度
-- 含"搅拌"且含"主" → 主釜转速
-- 含"搅拌"且含"次" → 次釜转速
-- 含"液位" → 次釜液位
-- 含"自循环"且含"主" → 主釜自循环流量
-- 含"自循环"且含"次" → 次釜自循环流量
-- 含"主次釜循环" → 主次釜循环流量
-- 含"pH" → pH值
-- 含"日期"或"时间"或"反应时间" → ""
-
-【输出】只输出JSON，key与模板列名完全一致，value填纯数字或空字符串。
+只输出JSON, key与模板列名完全一致, value纯数字或空字符串。
 """
-
 
                             response = client.chat.completions.create(
                                 model=MODEL_NAME,
-                                messages=[
-                                    {
-                                        "role": "user",
-                                        "content": [
-                                            {"type": "text", "text": prompt},
-                                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                                        ]
-                                    }
-                                ],
+                                messages=[{
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": prompt},
+                                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                                    ]
+                                }],
                                 temperature=0.1
                             )
 
@@ -225,17 +183,15 @@ if excel_file and image_file:
                                     data_dict[col] = current_shift
 
                             new_row_df = pd.DataFrame([data_dict]).reindex(columns=target_columns)
-
                             st.session_state.records[template_name] = pd.concat(
                                 [st.session_state.records[template_name], new_row_df],
                                 ignore_index=True
                             )
-
                             st.session_state.last_img = img_id
                             st.success("✅ 提取成功！已自动汇入下方暂存池。请继续上传下一张图片。")
 
                         except json.JSONDecodeError:
-                            st.error("解析失败：AI 返回的数据格式异常。这通常是由于图片过于模糊导致。")
+                            st.error("解析失败：AI 返回的数据格式异常。")
                             st.code(result_text)
                         except Exception as e:
                             st.error(f"网络、接口或超时错误：{e}")
@@ -250,14 +206,11 @@ else:
     for t_name, df_accumulated in st.session_state.records.items():
         original_len = st.session_state.template_lens.get(t_name, 0)
         new_records_count = len(df_accumulated) - original_len
-
         st.subheader(f"📑 {t_name} (本班次已录入 {new_records_count} 组新数据)")
         st.dataframe(df_accumulated, use_container_width=True)
-
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_accumulated.to_excel(writer, index=False, sheet_name='今日巡检')
-
         st.download_button(
             label=f"📥 导出完整版【{t_name}】",
             data=output.getvalue(),
