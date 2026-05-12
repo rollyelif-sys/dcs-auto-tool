@@ -3,5 +3,4 @@ openai
 pandas
 openpyxl
 xlrd
-python-calamine
 Pillow
