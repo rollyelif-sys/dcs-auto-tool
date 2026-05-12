@@ -81,30 +81,31 @@ with col2:
 
                             # ============ 区域裁剪方案 ============
                             # 将DCS截图分成6个区域，分别识别
+                            # ⚠️ 坐标比例需要根据实际SUPCON DCS界面调整
                             regions = {
                                 "a管流量": {
                                     "box": (0, int(h*0.2), int(w*0.4), int(h*0.55)),
-                                    "prompt": "这是DCS截图左侧a管管路区域。请读取每个流量计数值框最上面一行的PV实际值：\n金属液a=___L/h\n液碱a=___L/h\n氨水a=___L/h\n只输出JSON，如 {\"金属液a\":404.6,\"液碱a\":223.2,\"氨水a\":0.0}"
+                                    "prompt": "这是DCS截图左侧a管管路区域。请读取每个流量计数值框最上面一行的PV实际值（绿底黑字）：\n金属液a=___L/h\n液碱a=___L/h\n氨水a=___L/h\n只输出JSON，如 {\"金属液a\":404.6,\"液碱a\":223.2,\"氨水a\":0.0}"
                                 },
                                 "b管流量": {
                                     "box": (int(w*0.25), int(h*0.2), int(w*0.75), int(h*0.55)),
-                                    "prompt": "这是DCS截图中间b管管路区域。请读取每个流量计数值框最上面一行的PV实际值：\n金属液b=___L/h\n液碱b=___L/h\n氨水b=___L/h\n只输出JSON，如 {\"金属液b\":404.1,\"液碱b\":221.9,\"氨水b\":98.4}"
+                                    "prompt": "这是DCS截图中间b管管路区域。请读取每个流量计数值框最上面一行的PV实际值（绿底黑字）：\n金属液b=___L/h\n液碱b=___L/h\n氨水b=___L/h\n只输出JSON，如 {\"金属液b\":404.1,\"液碱b\":221.9,\"氨水b\":98.4}"
                                 },
                                 "氮气空气左": {
                                     "box": (0, int(h*0.05), int(w*0.5), int(h*0.35)),
-                                    "prompt": "读取氮气和空气的流量PV值（数值框最上面一行）：\n氮气a=___NL/m\n空气a=___NL/m\n只输出JSON"
+                                    "prompt": "读取左侧氮气和空气的流量PV值（数值框最上面一行，绿底黑字，忽略SP设定值）：\n氮气a=___NL/m\n空气a=___NL/m\n只输出JSON"
                                 },
                                 "氮气空气右": {
                                     "box": (int(w*0.5), int(h*0.05), w, int(h*0.4)),
-                                    "prompt": "读取右侧氮气b和空气b的流量PV值：\n氮气b=___NL/m\n空气b=___NL/m\n只输出JSON"
+                                    "prompt": "读取右侧氮气b和空气b的流量PV值（数值框最上面一行，绿底黑字，忽略SP设定值）：\n氮气b=___NL/m\n空气b=___NL/m\n只输出JSON"
                                 },
                                 "主次釜面板": {
                                     "box": (0, int(h*0.45), int(w*0.45), h),
-                                    "prompt": "读取主釜数据面板和次釜数据面板的所有参数：\n主釜: pH值(取较小的), 温度(℃), 液位(m), 转速(rpm)\n次釜: 温度(℃), 液位(m), 转速(rpm)\n只输出JSON，如 {\"pH\":10.456,\"主釜温度\":69.46,\"次釜温度\":69.94,\"主釜液位\":2.5,\"次釜液位\":2.2,\"主釜转速\":164.7,\"次釜转速\":165.0}"
+                                    "prompt": "读取主釜数据面板和次釜数据面板的所有参数（只读PV实际值，绿底黑字，忽略SP设定值）：\n主釜: pH值(取较小的), 温度(℃), 液位(m), 转速(rpm)\n次釜: 温度(℃), 液位(m), 转速(rpm)\n只输出JSON，如 {\"pH\":10.456,\"主釜温度\":69.46,\"次釜温度\":69.94,\"主釜液位\":2.5,\"次釜液位\":2.2,\"主釜转速\":164.7,\"次釜转速\":165.0}"
                                 },
                                 "罐体压力": {
                                     "box": (int(w*0.2), int(h*0.4), int(w*0.8), int(h*0.7)),
-                                    "prompt": "读取主釜和次釜罐体上的压力值：\n主釜压力=___kPa\n次釜压力=___kPa\n只输出JSON"
+                                    "prompt": "读取主釜和次釜罐体上的压力值（只读PV实际值）：\n主釜压力=___kPa\n次釜压力=___kPa\n只输出JSON"
                                 }
                             }
 
@@ -112,6 +113,7 @@ with col2:
                             all_data = {}
                             progress = st.progress(0)
                             total = len(regions)
+                            errors = []
 
                             for i, (name, region) in enumerate(regions.items()):
                                 crop = crop_region(image, region["box"])
@@ -136,44 +138,54 @@ with col2:
                                     data = json.loads(result)
                                     all_data.update(data)
                                 except json.JSONDecodeError:
-                                    st.warning(f"区域 {name} 解析失败: {result[:100]}")
+                                    errors.append(f"区域 {name} 解析失败: {result[:100]}")
 
                                 progress.progress((i + 1) / total)
+
+                            # 显示解析失败的区域
+                            for err in errors:
+                                st.warning(err)
 
                             # ============ 合并结果 ============
                             st.subheader("📊 识别结果")
                             st.json(all_data)
 
-                            # 映射到模板列名
+                            # 统一同义词：碱液→液碱，搅拌→转速
                             synonym_map = {
-                                "碱液": "液碱", "搅拌": "转速"
+                                "碱液": "液碱",
+                                "搅拌": "转速",
+                                "流量": "",
                             }
 
-                            # 构建映射表
-                            value_map = {
-                                "金属液a": all_data.get("金属液a", ""),
-                                "金属液b": all_data.get("金属液b", ""),
-                                "液碱a": all_data.get("液碱a", ""),
-                                "液碱b": all_data.get("液碱b", ""),
-                                "氨水a": all_data.get("氨水a", ""),
-                                "氨水b": all_data.get("氨水b", ""),
-                                "氮气a": all_data.get("氮气a", ""),
-                                "氮气b": all_data.get("氮气b", ""),
-                                "空气a": all_data.get("空气a", ""),
-                                "空气b": all_data.get("空气b", ""),
-                                "pH": all_data.get("pH", ""),
-                                "主釜温度": all_data.get("主釜温度", ""),
-                                "次釜温度": all_data.get("次釜温度", ""),
-                                "主釜液位": all_data.get("主釜液位", ""),
-                                "次釜液位": all_data.get("次釜液位", ""),
-                                "主釜转速": all_data.get("主釜转速", ""),
-                                "次釜转速": all_data.get("次釜转速", ""),
-                                "主釜压力": all_data.get("主釜压力", ""),
-                                "次釜压力": all_data.get("次釜压力", ""),
-                                "主釜自循环": all_data.get("主釜自循环", ""),
-                                "次釜自循环": all_data.get("次釜自循环", ""),
-                                "主次釜循环": all_data.get("主次釜循环", ""),
-                            }
+                            # 标准化值映射：将all_data的key统一
+                            value_map = {}
+
+                            # 直接复制已识别的值
+                            for k, v in all_data.items():
+                                if v is not None and v != "":
+                                    value_map[k] = v
+
+                            # 生成同义词别名（如 all_data里有"液碱a"，也映射到"碱液a"）
+                            aliases = {}
+                            for k, v in list(value_map.items()):
+                                for src, dst in synonym_map.items():
+                                    if src in k:
+                                        new_key = k.replace(src, dst)
+                                        if new_key not in value_map:
+                                            aliases[new_key] = v
+
+                            value_map.update(aliases)
+
+                            # 补充常见变体
+                            # "氨水 单管进料" → 取氨水a和氨水b中有效值（优先b）
+                            if "氨水a" in value_map or "氨水b" in value_map:
+                                a = value_map.get("氨水a", 0) or 0
+                                b = value_map.get("氨水b", 0) or 0
+                                value_map["氨水 单管进料"] = b if b > a else a
+                                value_map["氨水单管进料"] = value_map["氨水 单管进料"]
+
+                            # "主釜自循环" / "主次釜循环" 通常在DCS上没有独立读数，留空即可
+                            # 如果用户模板有这些列，会留空，不会报错
 
                             # 填入模板列
                             current_time = datetime.now()
@@ -189,15 +201,17 @@ with col2:
                                 elif "反应时间" in col:
                                     new_row[col] = ""
                                 else:
-                                    # 关键词匹配
                                     matched = False
-                                    col_lower = col.replace("碱液", "液碱").replace("搅拌", "转速")
+                                    # 标准化当前列名，去掉"流量"等通用词
+                                    col_norm = col
+                                    for src, dst in synonym_map.items():
+                                        col_norm = col_norm.replace(src, dst)
 
+                                    # 精确匹配
                                     for key, val in value_map.items():
                                         if not val and val != 0:
                                             continue
-                                        # 精确匹配
-                                        if key in col_lower or col_lower in key:
+                                        if key in col_norm or col_norm in key:
                                             new_row[col] = val
                                             matched = True
                                             break
@@ -212,14 +226,14 @@ with col2:
                                             new_row[col] = value_map.get("液碱a", "")
                                         elif ("碱液" in col or "液碱" in col) and "B" in col:
                                             new_row[col] = value_map.get("液碱b", "")
-                                        elif "氨" in col and "主" in col:
-                                            new_row[col] = value_map.get("氨水a", "")
-                                        elif "氨" in col and "次" in col:
-                                            new_row[col] = value_map.get("氨水b", "")
                                         elif "氨" in col and "单管" in col:
                                             a = value_map.get("氨水a", 0) or 0
                                             b = value_map.get("氨水b", 0) or 0
                                             new_row[col] = b if b > a else a
+                                        elif "氨" in col and "A" in col:
+                                            new_row[col] = value_map.get("氨水a", "")
+                                        elif "氨" in col and "B" in col:
+                                            new_row[col] = value_map.get("氨水b", "")
                                         elif "氮" in col and "主" in col:
                                             new_row[col] = value_map.get("氮气a", "")
                                         elif "氮" in col and "次" in col:
@@ -236,14 +250,24 @@ with col2:
                                             new_row[col] = value_map.get("主釜转速", "")
                                         elif "搅拌" in col and "次" in col:
                                             new_row[col] = value_map.get("次釜转速", "")
+                                        elif "液位" in col and "主" in col:
+                                            new_row[col] = value_map.get("主釜液位", "")
+                                        elif "液位" in col and "次" in col:
+                                            new_row[col] = value_map.get("次釜液位", "")
                                         elif "液位" in col:
                                             new_row[col] = value_map.get("次釜液位", "")
-                                        elif "自循环" in col:
+                                        elif "自循环" in col and "主" in col:
                                             new_row[col] = value_map.get("主釜自循环", "")
+                                        elif "自循环" in col:
+                                            new_row[col] = value_map.get("次釜自循环", "")
                                         elif "主次釜循环" in col:
                                             new_row[col] = value_map.get("主次釜循环", "")
-                                        elif "pH" in col or "PH" in col:
+                                        elif "pH" in col.upper() or "PH" in col.upper():
                                             new_row[col] = value_map.get("pH", "")
+                                        elif "压力" in col and "主" in col:
+                                            new_row[col] = value_map.get("主釜压力", "")
+                                        elif "压力" in col and "次" in col:
+                                            new_row[col] = value_map.get("次釜压力", "")
                                         else:
                                             new_row[col] = ""
 
