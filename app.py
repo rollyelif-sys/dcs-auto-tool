@@ -75,11 +75,21 @@ with col1:
             except Exception as e1:
                 try:
                     excel_file.seek(0)
-                    df_temp = pd.read_excel(excel_file, engine="xlrd")
+                    df_temp = pd.read_excel(excel_file, engine="xlrd", header=[0,1])
+                        df_temp.columns = [
+                            ' '.join(str(s).strip() for s in col if str(s).strip() and str(s) != 'nan')
+                            for col in df_temp.columns
+                        ]
+                        df_temp = df_temp.dropna(how='all').reset_index(drop=True)
                 except Exception as e2:
                     try:
                         excel_file.seek(0)
-                        df_temp = pd.read_excel(excel_file)
+                        df_temp = pd.read_excel(excel_file, header=[0,1])
+                        df_temp.columns = [
+                            ' '.join(str(s).strip() for s in col if str(s).strip() and str(s) != 'nan')
+                            for col in df_temp.columns
+                        ]
+                        df_temp = df_temp.dropna(how='all').reset_index(drop=True)
                     except Exception as e3:
                         st.error(f"Excel读取失败，请确认文件格式正确（需为.xlsx或.xls）。错误：{{e3}}")
                         st.stop()
