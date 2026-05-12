@@ -91,9 +91,13 @@ with col2:
                                     "box": (int(w*0.35), int(h*0.2), int(w*0.7), int(h*0.55)),
                                     "prompt": "这是DCS截图【右侧b管】区域。\n请仔细区分以下三个流量计，分别读取PV值（绿底黑字，忽略Hz）：\n1. 金属液b（标注为金属液的流量计）= ___L/h\n2. 回流b（标注为回流的流量计，数值通常在200-230范围）= ___L/h\n3. 氨水b（标注为氨水的流量计）= ___L/h\n只输出JSON，如 {\"金属液b\":404.5,\"回流b\":221.8,\"氨水b\":0.0}"
                                 },
-                                "氮气空气": {
-                                    "box": (0, int(h*0.05), w, int(h*0.4)),
-                                    "prompt": "这是DCS截图上方区域，包含氮气和空气流量计。\n左侧是主釜(a管)，右侧是次釜(b管)。\n请分别读取主釜和次釜的氮气、空气流量PV值（绿底黑字，忽略Hz，忽略SP设定值）：\n主釜区域：氮气=___NL/m, 空气=___NL/m\n次釜区域：氮气=___NL/m, 空气=___NL/m\n注意：如果某个流量计显示0.0，请输出0.0\n只输出JSON，如 {\"氮气主釜\":68.8,\"空气主釜\":0.0,\"氮气次釜\":151.7,\"空气次釜\":0.0}"
+                                "主釜氮气空气": {
+                                    "box": (0, int(h*0.05), int(w*0.35), int(h*0.4)),
+                                    "prompt": "这是DCS截图【主釜/左侧】上方区域。\n请找到标注为'氮气'的流量计，读取其PV值（绿底黑字）。\n再找到标注为'空气'的流量计，读取其PV值。\n注意：只读主釜（左侧）的数据，忽略右侧次釜的数据。\n只输出JSON，如 {\"氮气主釜\":68.8,\"空气主釜\":0.0}"
+                                },
+                                "次釜氮气空气": {
+                                    "box": (int(w*0.65), int(h*0.05), w, int(h*0.4)),
+                                    "prompt": "这是DCS截图【次釜/右侧】上方区域。\n请找到标注为'氮气'的流量计，读取其PV值（绿底黑字）。\n再找到标注为'空气'的流量计，读取其PV值。\n注意：只读次釜（右侧）的数据，忽略左侧主釜的数据。\n只输出JSON，如 {\"氮气次釜\":151.7,\"空气次釜\":0.0}"
                                 },
                                 "主次釜面板": {
                                     "box": (0, int(h*0.45), int(w*0.5), h),
@@ -177,13 +181,17 @@ with col2:
                                 if new_key in value_map and old_key not in value_map:
                                     value_map[old_key] = value_map[new_key]
 
-                            # 生成同义词别名（如 all_data里有"液碱a"，也映射到"碱液a"）
-                            for k, v in list(value_map.items()):
-                                for src, dst in synonym_map.items():
-                                    if src in k:
-                                        new_key = k.replace(src, dst)
-                                        if new_key not in value_map:
-                                            value_map[new_key] = v
+                            # 生成同义词别名（递归，直到没有新key）
+                            changed = True
+                            while changed:
+                                changed = False
+                                for k, v in list(value_map.items()):
+                                    for src, dst in synonym_map.items():
+                                        if src in k:
+                                            new_key = k.replace(src, dst)
+                                            if new_key not in value_map:
+                                                value_map[new_key] = v
+                                                changed = True
 
                             # 补充常见变体
                             # "氨水 单管进料" → 取氨水a和氨水b中有效值（优先b）
