@@ -100,7 +100,7 @@ if excel_file and image_file:
                     with st.spinner(f"正在呼叫 {MODEL_NAME} 视觉大模型执行工艺数据比对，请稍候..."):
                         try:
                             # 初始化 OpenAI 客户端连接小米服务，设置超时防卡死
-                            client = OpenAI(api_key=api_key_input, base_url=BASE_URL, timeout=30.0)
+                            client = OpenAI(api_key=api_key_input, base_url=BASE_URL, timeout=120.0)
                             base64_image = encode_image_to_base64(image)
                             
                             # 将列名格式化为清晰的列表，提高 AI 识别准确率
